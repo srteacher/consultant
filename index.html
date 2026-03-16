@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KS Innovation Consultant 1/2569</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f0fdf4;
+        }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #e0f2fe; }
+        ::-webkit-scrollbar-thumb { background: #16a34a; border-radius: 4px; }
+
+        .tab-active {
+            border-bottom: 4px solid #16a34a;
+            color: #16a34a;
+            font-weight: 600;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+        }
+        .calendar-day {
+            min-height: 120px;
+            padding: 8px;
+            border: 1px solid #dcfce7;
+            border-radius: 8px;
+            background: white;
+            transition: all 0.2s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        .calendar-day.disabled {
+            background: #f3f4f6;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .calendar-day.past-day {
+            background: #f9fafb;
+            color: #d1d5db;
+            cursor: not-allowed;
+            filter: grayscale(1);
+        }
+        .calendar-day.is-today {
+            border: 2px solid #16a34a !important;
+            background: #f0fdf4;
+        }
+        
+        .booking-tag {
+            font-size: 10px;
+            padding: 3px 5px;
+            border-radius: 4px;
+            margin-top: 4px;
+            line-height: 1.2;
+            border-left-width: 3px;
+        }
+        .tag-approved {
+            background: #dcfce7;
+            color: #166534;
+            border-left-color: #22c55e;
+        }
+        .tag-pending {
+            background: #fef9c3;
+            color: #854d0e;
+            border-left-color: #eab308;
+            border-style: dashed;
+            border-width: 1px 1px 1px 3px;
+        }
+        .truncate-text {
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* Loading Indicator */
+        .loader-container {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- Loading Overlay -->
+    <div id="loader" class="loader-container">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
+        <p class="text-green-800 font-bold">กำลังบันทึกข้อมูลไปยัง Google Sheets...</p>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white text-green-700 shadow-sm border-b border-green-100">
+        <div class="container mx-auto px-4 py-6 flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <img src="image.png" alt="KS Logo" class="w-[100px] h-[100px] object-contain">
+                <div>
+                    <h1 class="text-3xl font-bold tracking-tight text-green-700">KS Innovation Consultant</h1>
+                    <p class="text-green-600 mt-1 font-medium">โรงเรียนขจรเกียรติศึกษา (ปีการศึกษา 1/2569)</p>
+                </div>
+            </div>
+            <div id="user-status" class="hidden text-sm bg-green-50 text-green-700 px-4 py-2 rounded-lg border border-green-200">
+                <i class="fas fa-user-check mr-2"></i>ครูที่ปรึกษา
+                <button onclick="logout()" class="ml-3 text-red-500 hover:text-red-700 underline text-xs font-bold uppercase">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="container mx-auto px-4 flex justify-center space-x-8">
+            <button onclick="switchTab('calendar')" id="tab-calendar" class="px-6 py-4 text-gray-500 hover:text-green-600 transition tab-active">
+                <i class="far fa-calendar-alt mr-2"></i>ปฏิทิน
+            </button>
+            <button onclick="switchTab('booking')" id="tab-booking" class="px-6 py-4 text-gray-500 hover:text-green-600 transition">
+                <i class="fas fa-user-edit mr-2"></i>จองเวลา
+            </button>
+            <button onclick="switchTab('admin')" id="tab-admin" class="px-6 py-4 text-gray-500 hover:text-green-600 transition">
+                <i class="fas fa-user-shield mr-2"></i>ส่วนของครู
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8 mb-24">
+
+        <!-- TAB 1: Calendar -->
+        <section id="view-calendar" class="block">
+            <div class="bg-white rounded-xl shadow-lg border border-green-100 p-6">
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h2 class="text-2xl font-bold text-green-800">
+                        <i class="fas fa-calendar-check mr-2"></i>เดือน <span id="current-month-display"></span>
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button onclick="changeMonth(-1)" class="p-2 bg-green-100 text-green-700 rounded hover:bg-green-200"><i class="fas fa-chevron-left"></i></button>
+                        <button onclick="changeMonth(1)" class="p-2 bg-green-100 text-green-700 rounded hover:bg-green-200"><i class="fas fa-chevron-right"></i></button>
+                        <button onclick="downloadReport()" class="ml-4 px-4 py-2 bg-green-600 text-white rounded shadow hover:bg-green-700 transition flex items-center">
+                            <i class="fas fa-file-excel mr-2"></i>Report
+                        </button>
+                    </div>
+                </div>
+
+                <div class="calendar-grid text-center font-semibold text-green-800 mb-2">
+                    <div>อา.</div><div>จ.</div><div>อ.</div><div>พ.</div><div>พฤ.</div><div>ศ.</div><div>ส.</div>
+                </div>
+                <div id="calendar-body" class="calendar-grid"></div>
+                
+                <div class="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                    <p class="text-xs text-red-500"><i class="fas fa-info-circle mr-1"></i> จองได้เฉพาะ จ.-พ. | แสดงผลในปฏิทินเฉพาะรายการที่อนุมัติแล้ว</p>
+                    <div class="flex items-center space-x-4 text-[10px] text-gray-400">
+                        <span class="flex items-center"><div class="w-3 h-3 bg-[#f9fafb] border mr-1"></div> ย้อนหลัง</span>
+                        <span class="flex items-center"><div class="w-3 h-3 border-2 border-green-600 mr-1"></div> วันปัจจุบัน</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: Booking -->
+        <section id="view-booking" class="hidden max-w-2xl mx-auto">
+            <div class="bg-white rounded-xl shadow-lg border border-green-100 overflow-hidden">
+                <div class="bg-green-600 p-4 text-white">
+                    <h2 class="text-xl font-bold"><i class="fas fa-calendar-plus mr-2"></i>ฟอร์มการจอง</h2>
+                    <p class="text-xs opacity-90">ข้อมูลจะถูกส่งไปยังครูเพื่อขออนุมัติและบันทึกลง Google Sheets</p>
+                </div>
+                <form id="booking-form" onsubmit="handleBookingSubmit(event)" class="p-6 space-y-5">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">ชื่อนักเรียน / กลุ่ม</label>
+                        <input type="text" id="b-name" required class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">วันที่</label>
+                            <input type="date" id="b-date" required onchange="validateBookingDate()" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+                            <p class="text-[10px] text-red-500 mt-1 hidden" id="date-error">จองได้เฉพาะ จ.-พ. เท่านั้น</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">เวลา</label>
+                            <select id="b-time" required class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+                                <option value="">-- เลือก --</option>
+                                <option value="16:00">16:00 - 16:20 น.</option>
+                                <option value="16:20">16:20 - 16:40 น.</option>
+                                <option value="16:40">16:40 - 17:00 น.</option>
+                                <option value="17:00">17:00 - 17:20 น.</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">จุดประสงค์การเข้าพบ</label>
+                        <select id="b-purpose" required class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+                            <option value="">-- เลือกจุดประสงค์ --</option>
+                            <option value="เสนอหัวข้อนวัตกรรม">เสนอหัวข้อนวัตกรรม</option>
+                            <option value="อัปเดตนวัตกรรม">อัปเดตนวัตกรรม</option>
+                            <option value="แก้ไขบัค">แก้ไขบัค</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">หัวข้อโครงงาน</label>
+                        <input type="text" id="b-topic" required class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none" placeholder="เช่น Smart Garden">
+                    </div>
+                    <button type="submit" id="submit-btn" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-green-700 transition">ส่งคำขอจองไปยังครู</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- TAB 3: Admin -->
+        <section id="view-admin" class="hidden">
+            <div id="admin-login-box" class="max-w-md mx-auto bg-white rounded-xl shadow-lg border p-6 mt-10">
+                <h2 class="text-xl font-bold mb-4 text-center">ครูเข้าสู่ระบบ</h2>
+                <input type="password" id="admin-password" class="w-full p-3 border rounded-lg mb-4 outline-none focus:ring-2 focus:ring-green-500" placeholder="Password">
+                <button onclick="checkLogin()" class="w-full bg-gray-800 text-white py-3 rounded-lg font-bold">LOGIN</button>
+            </div>
+
+            <div id="admin-dashboard" class="hidden space-y-6">
+                <div id="admin-tables" class="space-y-6"></div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // --- ส่วนการตั้งค่า GOOGLE APPS SCRIPT ---
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzeihvK8R8OPSQMvZJu3jxnrnlidRtfp1TYMSYjebCBf4iTsPD3LXZS0jfMVvyQH1kE/exec";
+        
+        // State
+        let bookings = JSON.parse(localStorage.getItem('ks_bookings')) || [];
+        let currentMonthDate = new Date();
+        const todayObj = new Date(); todayObj.setHours(0,0,0,0);
+        let isLoggedIn = sessionStorage.getItem('ks_admin_logged_in') === 'true';
+
+        window.onload = () => {
+            initCalendar();
+            updateUIState();
+            renderTables();
+        };
+
+        // แสดง/ซ่อน Loading
+        function showLoader(show) {
+            document.getElementById('loader').style.display = show ? 'flex' : 'none';
+        }
+
+        // ฟังก์ชันหลักในการส่งข้อมูลไปยัง Apps Script
+        async function sendToSheet(payload) {
+            if (!WEB_APP_URL) return;
+            showLoader(true);
+            try {
+                // ใช้ Fetch API เพื่อส่งข้อมูล
+                // หมายเหตุ: mode 'no-cors' จะส่งข้อมูลไปถึง Google Sheet แต่ JS ฝั่งเราจะไม่สามารถอ่าน Response JSON ได้
+                // แต่ข้อมูลจะถูกบันทึกลง Sheet สำเร็จ
+                await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    cache: 'no-cache',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                console.log("Sheet sync complete");
+            } catch (error) {
+                console.error("Sync Error:", error);
+                alert('การเชื่อมต่อกับ Google Sheet ขัดข้อง ข้อมูลอาจยังไม่ถูกบันทึกออนไลน์');
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        function switchTab(tabId) {
+            ['calendar', 'booking', 'admin'].forEach(id => {
+                document.getElementById(`tab-${id}`).classList.toggle('tab-active', id === tabId);
+                document.getElementById(`view-${id}`).classList.toggle('hidden', id !== tabId);
+            });
+            if (tabId === 'calendar') initCalendar();
+        }
+
+        function checkLogin() {
+            if(document.getElementById('admin-password').value === 'srteacher') {
+                isLoggedIn = true;
+                sessionStorage.setItem('ks_admin_logged_in', 'true');
+                updateUIState(); renderTables();
+            } else { alert('รหัสผ่านไม่ถูกต้อง'); }
+        }
+
+        function logout() { 
+            isLoggedIn = false; 
+            sessionStorage.removeItem('ks_admin_logged_in'); 
+            updateUIState(); 
+        }
+
+        function updateUIState() {
+            document.getElementById('admin-login-box').classList.toggle('hidden', isLoggedIn);
+            document.getElementById('admin-dashboard').classList.toggle('hidden', !isLoggedIn);
+            document.getElementById('user-status').classList.toggle('hidden', !isLoggedIn);
+        }
+
+        function validateBookingDate() {
+            const dateVal = document.getElementById('b-date').value;
+            if (!dateVal) return;
+            const d = new Date(dateVal); d.setHours(0,0,0,0);
+            const bad = (d.getDay() === 0 || d.getDay() >= 4 || d < todayObj);
+            document.getElementById('date-error').classList.toggle('hidden', !bad);
+            document.getElementById('submit-btn').disabled = bad;
+            document.getElementById('submit-btn').classList.toggle('opacity-50', bad);
+        }
+
+        async function handleBookingSubmit(e) {
+            e.preventDefault();
+            const date = document.getElementById('b-date').value;
+            const time = document.getElementById('b-time').value;
+            
+            const isTaken = bookings.find(x => x.date === date && x.time === time && x.status === 'approved');
+            if(isTaken) return alert('ช่วงเวลานี้ได้รับการอนุมัติให้กลุ่มอื่นแล้ว');
+
+            const newBooking = { 
+                id: Date.now().toString(), 
+                name: document.getElementById('b-name').value, 
+                date: date, 
+                time: time, 
+                topic: document.getElementById('b-topic').value,
+                purpose: document.getElementById('b-purpose').value,
+                status: 'pending',
+                action: 'add'
+            };
+
+            bookings.push(newBooking);
+            localStorage.setItem('ks_bookings', JSON.stringify(bookings));
+            
+            // ส่งข้อมูลไปยัง Google Sheets
+            await sendToSheet(newBooking);
+            
+            alert('ส่งคำขอจองสำเร็จ! โปรดรอครูอนุมัติ'); 
+            document.getElementById('booking-form').reset();
+            switchTab('calendar');
+        }
+
+        async function approve(id, t) { 
+            const i = bookings.findIndex(x => x.id === id); 
+            if(i > -1) {
+                bookings[i].status = 'approved'; 
+                bookings[i].approvedBy = t; 
+                localStorage.setItem('ks_bookings', JSON.stringify(bookings)); 
+                
+                // ส่งอัปเดตสถานะไปยัง Google Sheets
+                await sendToSheet({ id: id, status: 'approved', approvedBy: t, action: 'update_status' });
+                
+                renderTables(); initCalendar();
+            }
+        }
+
+        async function remove(id) { 
+            const pass = prompt('กรุณาใส่รหัส srteacher เพื่อลบรายการ:');
+            if (pass === 'srteacher') {
+                bookings = bookings.filter(x => x.id !== id); 
+                localStorage.setItem('ks_bookings', JSON.stringify(bookings)); 
+                
+                // ส่งคำสั่งลบไปยัง Google Sheets
+                await sendToSheet({ id: id, action: 'delete' });
+                
+                renderTables(); initCalendar();
+            } else if(pass !== null) {
+                alert('รหัสผ่านไม่ถูกต้อง');
+            }
+        }
+
+        function renderTables() {
+            const tables = document.getElementById('admin-tables');
+            const pending = bookings.filter(x => x.status === 'pending');
+            const approved = bookings.filter(x => x.status === 'approved');
+            
+            tables.innerHTML = `
+                <div class="bg-white rounded-xl shadow border border-yellow-200 overflow-hidden">
+                    <div class="bg-yellow-500 p-3 text-white font-bold"><i class="fas fa-clock mr-2"></i>รออนุมัติ (${pending.length})</div>
+                    <div class="overflow-x-auto"><table class="w-full text-sm">
+                        ${pending.length === 0 ? '<tr><td class="p-4 text-center text-gray-400 italic">ไม่มีรายการรออนุมัติ</td></tr>' : 
+                        pending.map(x=>`
+                            <tr class="border-b">
+                                <td class="p-3 text-gray-600">${x.date} ${x.time}</td>
+                                <td class="p-3 font-bold">${x.name}</td>
+                                <td class="p-3">
+                                    <div class="font-semibold text-blue-600">${x.purpose}</div>
+                                    <div class="text-[10px] text-gray-400">${x.topic}</div>
+                                </td>
+                                <td class="p-3 flex gap-1 justify-end">
+                                    <button onclick="approve('${x.id}','ครูโย')" class="bg-blue-600 text-white px-2 py-1 rounded text-[10px]">โย</button>
+                                    <button onclick="approve('${x.id}','ครูพอ')" class="bg-green-600 text-white px-2 py-1 rounded text-[10px]">พอ</button>
+                                    <button onclick="remove('${x.id}')" class="bg-red-500 text-white px-2 py-1 rounded text-[10px]"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table></div>
+                </div>
+                <div class="bg-white rounded-xl shadow border border-green-200 overflow-hidden">
+                    <div class="bg-green-600 p-3 text-white font-bold"><i class="fas fa-check-circle mr-2"></i>อนุมัติแล้ว (${approved.length})</div>
+                    <div class="overflow-x-auto"><table class="w-full text-sm">
+                        ${approved.length === 0 ? '<tr><td class="p-4 text-center text-gray-400 italic">ยังไม่มีรายการที่อนุมัติ</td></tr>' :
+                        approved.map(x=>`
+                            <tr class="border-b">
+                                <td class="p-3 text-gray-600">${x.date} ${x.time}</td>
+                                <td class="p-3 font-bold">${x.name}</td>
+                                <td class="p-3">โดย: <span class="text-green-600 font-bold">${x.approvedBy}</span></td>
+                                <td class="p-3 text-right">
+                                    <button onclick="remove('${x.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table></div>
+                </div>
+            `;
+        }
+
+        function changeMonth(n) { currentMonthDate.setMonth(currentMonthDate.getMonth() + n); initCalendar(); }
+
+        function initCalendar() {
+            const y = currentMonthDate.getFullYear(), m = currentMonthDate.getMonth();
+            const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            document.getElementById('current-month-display').textContent = `${monthNames[m]} ${y+543}`;
+            const first = new Date(y, m, 1).getDay(), last = new Date(y, m+1, 0).getDate();
+            const body = document.getElementById('calendar-body'); body.innerHTML = '';
+            
+            for(let i=0; i<first; i++) body.appendChild(createCell('', true));
+            for(let d=1; d<=last; d++) {
+                const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const dobj = new Date(ds); dobj.setHours(0,0,0,0);
+                const isToday = dobj.getTime() === todayObj.getTime();
+                const past = dobj < todayObj;
+                const dis = (dobj.getDay() === 0 || dobj.getDay() >= 4);
+                body.appendChild(createCell(d, dis, ds, isToday, past));
+            }
+        }
+
+        function createCell(day, dis, ds, isToday, isPast) {
+            const div = document.createElement('div');
+            div.className = `calendar-day ${isToday?'is-today':''} ${dis?'disabled':''} ${(isPast && !isToday)?'past-day':''}`;
+            if(day !== '') {
+                div.innerHTML = `<span class="font-bold text-sm">${day}</span>`;
+                
+                // แสดงเฉพาะรายการที่อนุมัติแล้วในปฏิทินรวม
+                const db = bookings.filter(x => x.date === ds && x.status === 'approved');
+                db.sort((a,b) => a.time.localeCompare(b.time)).forEach(b => {
+                    const tag = document.createElement('div');
+                    tag.className = `booking-tag tag-approved shadow-sm`;
+                    tag.innerHTML = `<div class="font-bold text-[9px] truncate-text">${b.time} | ${b.name}</div><div class="text-[8px] opacity-80">ครู${b.approvedBy}</div>`;
+                    div.appendChild(tag);
+                });
+            }
+            return div;
+        }
+
+        function downloadReport() {
+            if(bookings.length === 0) return alert('ไม่มีข้อมูลสำหรับการออกรายงาน');
+            let csv = "\uFEFFID,วันที่,เวลา,กลุ่ม,จุดประสงค์,หัวข้อ,สถานะ,ครูที่อนุมัติ\n";
+            bookings.sort((a,b)=>a.date.localeCompare(b.date)).forEach(x => {
+                csv += `"${x.id}","${x.date}","${x.time}","${x.name}","${x.purpose}","${x.topic}","${x.status}","${x.approvedBy||''}"\n`;
+            });
+            const link = document.createElement("a");
+            link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csv));
+            link.setAttribute("download", "ks_innovation_report.csv");
+            link.click();
+        }
+    </script>
+</body>
+</html>
