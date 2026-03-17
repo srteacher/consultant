@@ -108,7 +108,7 @@
     <header class="bg-white text-green-700 shadow-sm border-b border-green-100">
         <div class="container mx-auto px-4 py-6 flex items-center justify-between">
             <div class="flex items-center space-x-6">
-                <img src="image.png" alt="KS Logo" class="w-[100px] h-[100px] object-contain">
+                <img src="https://placehold.co/100x100/ffffff/16a34a?text=KS" alt="KS Logo" class="w-[100px] h-[100px] object-contain">
                 <div>
                     <h1 class="text-3xl font-bold tracking-tight text-green-700">KS Innovation Consultant</h1>
                     <p class="text-green-600 mt-1 font-medium">โรงเรียนขจรเกียรติศึกษา (ปีการศึกษา 1/2569)</p>
@@ -234,10 +234,10 @@
 
     <script>
         // --- ส่วนการตั้งค่า GOOGLE APPS SCRIPT ---
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzeihvK8R8OPSQMvZJu3jxnrnlidRtfp1TYMSYjebCBf4iTsPD3LXZS0jfMVvyQH1kE/exec";
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzdEqqQ2GCPpS_wMZvjBQGeUs1QzKQq-Cm0a0YtwfDTAedPa_J_ZlsuRDiqq3jd6qdM/exec";
         
         // State
-        let bookings = JSON.parse(localStorage.getItem('ks_bookings')) || [];
+        let bookings = []; // เริ่มต้นเป็นค่าว่างเพื่อรอโหลดข้อมูลส่วนกลางจาก Google Sheets
         let currentMonthDate = new Date();
         const todayObj = new Date(); todayObj.setHours(0,0,0,0);
         let isLoggedIn = sessionStorage.getItem('ks_admin_logged_in') === 'true';
@@ -246,6 +246,7 @@
             initCalendar();
             updateUIState();
             renderTables();
+            loadDataFromSheet(); // สั่งให้ดึงข้อมูลจากส่วนกลางทุกครั้งที่เปิดเว็บ
         };
 
         // แสดง/ซ่อน Loading
@@ -253,22 +254,47 @@
             document.getElementById('loader').style.display = show ? 'flex' : 'none';
         }
 
+        // โหลดข้อมูลล่าสุดจาก Google Sheets 
+        async function loadDataFromSheet() {
+            if (!WEB_APP_URL) return;
+            showLoader(true);
+            try {
+                // เติมพารามิเตอร์เวลาป้องกันไม่ให้เบราว์เซอร์จำข้อมูลเก่า (Cache-busting)
+                const res = await fetch(WEB_APP_URL + "?t=" + new Date().getTime());
+                const data = await res.json();
+                
+                if (Array.isArray(data)) {
+                    bookings = data;
+                    localStorage.setItem('ks_bookings', JSON.stringify(bookings)); // สำรองเป็น Local
+                    initCalendar();
+                    renderTables();
+                }
+            } catch (error) {
+                console.error("Load Error:", error);
+                // หากไม่มีอินเทอร์เน็ต ให้พยายามดึงข้อมูลที่สำรองไว้มาแสดง
+                const localData = localStorage.getItem('ks_bookings');
+                if(localData) {
+                    bookings = JSON.parse(localData);
+                    initCalendar();
+                    renderTables();
+                }
+            } finally {
+                showLoader(false);
+            }
+        }
+
         // ฟังก์ชันหลักในการส่งข้อมูลไปยัง Apps Script
         async function sendToSheet(payload) {
             if (!WEB_APP_URL) return;
             showLoader(true);
             try {
-                // ใช้ Fetch API เพื่อส่งข้อมูล
-                // หมายเหตุ: mode 'no-cors' จะส่งข้อมูลไปถึง Google Sheet แต่ JS ฝั่งเราจะไม่สามารถอ่าน Response JSON ได้
-                // แต่ข้อมูลจะถูกบันทึกลง Sheet สำเร็จ
                 await fetch(WEB_APP_URL, {
                     method: 'POST',
-                    mode: 'no-cors',
-                    cache: 'no-cache',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // แก้ไขเพื่อเลี่ยงปัญหา CORS block
                     body: JSON.stringify(payload)
                 });
                 console.log("Sheet sync complete");
+                await loadDataFromSheet(); // ดึงข้อมูลอัปเดตใหม่มาวาดบนหน้าจออีกครั้ง
             } catch (error) {
                 console.error("Sync Error:", error);
                 alert('การเชื่อมต่อกับ Google Sheet ขัดข้อง ข้อมูลอาจยังไม่ถูกบันทึกออนไลน์');
